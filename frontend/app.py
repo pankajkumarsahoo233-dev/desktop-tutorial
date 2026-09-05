@@ -1,4 +1,4 @@
-import os, requests, streamlit as st
+import os, json, requests, streamlit as st
 
 st.set_page_config(page_title="ProjectMentor AI", page_icon="🎓", layout="wide")
 st.title("🎓 ProjectMentor AI")
@@ -14,13 +14,90 @@ with st.sidebar:
     difficulty=st.select_slider("Difficulty",["Beginner","Intermediate","Advanced"],value="Intermediate")
 profile={"domain":domain,"skills":skills,"interests":interests,"duration":duration,"difficulty":difficulty}
 
-def call(action,question=""):
+def call(action, question=""):
     try:
-        r=requests.post(f"{backend.rstrip('/')}/mentor",json={"action":action,"profile":profile,"question":question},timeout=90)
-        r.raise_for_status()
-        return r.json()["result"]
+        api_key = st.secrets["GEMINI_API_KEY"]
+
+        if action == "ideas":
+            task = """Generate exactly 3 practical final-year project ideas.
+Return ONLY valid JSON:
+{
+  "ideas": [
+    {
+      "title": "...",
+      "problem": "...",
+      "solution": "...",
+      "ai": "...",
+      "mvp": "..."
+    }
+  ]
+}"""
+
+        elif action == "stack":
+            task = """Recommend a practical technology stack for this student.
+Return ONLY valid JSON:
+{
+  "stack": {
+    "Frontend": "...",
+    "Backend": "...",
+    "Database": "...",
+    "AI": "...",
+    "Deployment": "..."
+  },
+  "why": "..."
+}"""
+
+        else:
+            task = f"""You are an expert AI project mentor.
+Answer this student question clearly and practically:
+
+{question}
+
+Give useful advice suitable for a final-year student."""
+
+        prompt = f"""
+Student profile:
+Domain: {domain}
+Skills: {skills}
+Interests: {interests}
+Duration: {duration}
+Difficulty: {difficulty}
+
+{task}
+"""
+
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+
+        response = requests.post(
+            url,
+            headers={
+                "Content-Type": "application/json",
+                "x-goog-api-key": api_key
+            },
+            json={
+                "contents": [
+                    {
+                        "parts": [
+                            {"text": prompt}
+                        ]
+                    }
+                ]
+            },
+            timeout=60
+        )
+
+        response.raise_for_status()
+
+        text = response.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+
+        if action == "mentor":
+            return {"answer": text}
+
+        text = text.replace("```json", "").replace("```", "").strip()
+        return json.loads(text)
+
     except Exception as e:
-        st.error(f"Backend error: {e}")
+        st.error(f"AI error: {e}")
         return None
 
 a,b,c=st.tabs(["💡 Idea Generator","🧩 Tech Stack","🤖 AI Mentor"])
